@@ -102,13 +102,13 @@
       <div class="field" id="fieldName">
         <label for="name">Имя клиента <span class="req">*</span></label>
         <input type="text" id="name" placeholder="Иван Петров" autocomplete="off">
-        <div class="error" id="errName"></div>
+        <div class="error" id="errName" role="alert"></div>
       </div>
 
       <div class="field" id="fieldPhone">
         <label for="phone">Телефон <span class="req">*</span></label>
         <input type="tel" id="phone" placeholder="+7 999 123-45-67" autocomplete="off">
-        <div class="error" id="errPhone"></div>
+        <div class="error" id="errPhone" role="alert"></div>
       </div>
     </div>
 
@@ -190,6 +190,27 @@ function saveLeads(leads) {
 // иначе после F5 список окажется пустым
 let leads = loadLeads();
 
+/**
+ * Выдаёт уникальный идентификатор лида.
+ *
+ * Просто Date.now() здесь не годится: два сохранения внутри одной
+ * миллисекунды получают одинаковый id, и тогда удаление одного лида
+ * убирает оба (filter вырезает всех с этим id), а смена этапа
+ * применяется не к той карточке (find возвращает первую).
+ *
+ * Счётчик стартует от максимального сохранённого id, поэтому после
+ * перезагрузки новые идентификаторы не пересекутся со старыми.
+ */
+let lastId = leads.reduce(function (max, lead) {
+  return Math.max(max, Number(lead.id) || 0);
+}, 0);
+
+function nextId() {
+  const now = Date.now();
+  lastId = now > lastId ? now : lastId + 1;
+  return lastId;
+}
+
 
 /* ============================================================
    2. ЛОГИКА КНОПКИ (валидация и сохранение)
@@ -250,7 +271,7 @@ form.addEventListener("submit", function (event) {
   if (!validate(name, phone)) return;
 
   const lead = {
-    id: Date.now(),
+    id: nextId(),
     name: name.trim(),
     phone: phone.trim(),
     source: document.getElementById("source").value,
