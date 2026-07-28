@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Добавление лида в CRM</title>
+<style>
+  /* ==========================================================
+     1. ИНТЕРФЕЙС (оформление)
+     ========================================================== */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    background: #f5f6f8;
+    color: #1a1d21;
+    padding: 24px 16px 48px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: #6b7280; font-size: 13.5px; margin-bottom: 20px; }
+
+  .panel {
+    background: #fff; border: 1px solid #e3e6ea; border-radius: 10px;
+    padding: 18px; margin-bottom: 22px;
+  }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+  .req { color: #d92d20; }
+  .field input[type=text], .field input[type=tel], .field select {
+    width: 100%; padding: 9px 11px; font: inherit;
+    border: 1px solid #d5d9e0; border-radius: 8px; background: #fff;
+  }
+  .field input:focus, .field select:focus { outline: 2px solid #3b5bdb; outline-offset: -1px; }
+  .field.invalid input { border-color: #d92d20; background: #fff7f7; }
+
+  /* сообщение об ошибке под конкретным полем */
+  .error { display: none; color: #d92d20; font-size: 12.5px; margin-top: 4px; }
+  .field.invalid .error { display: block; }
+
+  .check { display: flex; align-items: center; gap: 8px; margin: 4px 0 16px; }
+  .check input { width: 16px; height: 16px; }
+  .check label { font-size: 14px; }
+
+  button {
+    font: inherit; cursor: pointer; border: none; border-radius: 8px;
+  }
+  .save {
+    background: #3b5bdb; color: #fff; padding: 10px 20px; font-weight: 600;
+  }
+  .save:hover { background: #3450c4; }
+
+  .status { font-size: 13px; margin-top: 10px; min-height: 18px; }
+  .status.ok { color: #0f7a3d; }
+  .status.warn { color: #b45309; }
+
+  /* список лидов */
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .empty { color: #8a919c; font-size: 14px; padding: 16px 0; }
+  .lead {
+    background: #fff; border: 1px solid #e3e6ea; border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 10px;
+  }
+  .lead-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .lead-name { font-weight: 600; }
+  .lead-phone { color: #4b5563; }
+  .lead-time { margin-left: auto; color: #9aa1ac; font-size: 12px; }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; margin: 9px 0 11px; }
+  .badge {
+    font-size: 12px; padding: 2px 9px; border-radius: 20px;
+    background: #eef1f5; color: #4b5563; border: 1px solid #e0e4ea;
+  }
+  .badge.cold { background: #eaf4ff; color: #1d4ed8; border-color: #cfe2ff; }
+  .badge.warm { background: #fff4e5; color: #b45309; border-color: #ffe2b8; }
+  .badge.tz   { background: #eafbf0; color: #0f7a3d; border-color: #c9f0d8; }
+  .lead-actions { display: flex; align-items: center; gap: 8px; }
+  .lead-actions select {
+    padding: 6px 9px; font: inherit; font-size: 13px;
+    border: 1px solid #d5d9e0; border-radius: 7px; background: #fff;
+  }
+  .del {
+    margin-left: auto; background: none; color: #9aa1ac;
+    font-size: 13px; padding: 6px 8px;
+  }
+  .del:hover { color: #d92d20; }
+
+  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Добавление лида</h1>
+  <p class="sub">Мини-карточка лида для CRM. Тестовое задание.</p>
+
+  <!-- ========================================================
+       1. ИНТЕРФЕЙС (разметка формы)
+       ======================================================== -->
+  <form class="panel" id="leadForm" novalidate>
+    <div class="row">
+      <div class="field" id="fieldName">
+        <label for="name">Имя клиента <span class="req">*</span></label>
+        <input type="text" id="name" placeholder="Иван Петров" autocomplete="off">
+        <div class="error" id="errName"></div>
+      </div>
+
+      <div class="field" id="fieldPhone">
+        <label for="phone">Телефон <span class="req">*</span></label>
+        <input type="tel" id="phone" placeholder="+7 999 123-45-67" autocomplete="off">
+        <div class="error" id="errPhone"></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="source">Источник лида</label>
+        <select id="source">
+          <option value="Холодный">Холодный</option>
+          <option value="Тёплый">Тёплый</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="owner">Ответственный</label>
+        <select id="owner">
+          <option value="Лидоруб">Лидоруб</option>
+          <option value="МОП">МОП</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="stage">Этап сделки</label>
+      <select id="stage">
+        <option value="Новый лид">Новый лид</option>
+        <option value="Квалифицирован">Квалифицирован</option>
+        <option value="Назначена консультация">Назначена консультация</option>
+        <option value="Отказ">Отказ</option>
+      </select>
+    </div>
+
+    <div class="check">
+      <input type="checkbox" id="tz">
+      <label for="tz">Запрошено ТЗ</label>
+    </div>
+
+    <button type="submit" class="save">Сохранить</button>
+    <div class="status" id="status"></div>
+  </form>
+
+  <h2>Лиды <span id="count" style="color:#9aa1ac;font-weight:400"></span></h2>
+  <div id="list"></div>
+
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   3. СОХРАНЕНИЕ ДАННЫХ (localStorage)
+   ============================================================ */
+
+const STORAGE_KEY = "crm.leads.v1";
+
+/** Читает лиды из localStorage. Битые данные не должны ломать страницу. */
+function loadLeads() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    console.warn("не удалось прочитать сохранённые лиды:", e);
+    return [];
+  }
+}
+
+/** Записывает лиды в localStorage. */
+function saveLeads(leads) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(leads));
+  } catch (e) {
+    // приватный режим браузера или переполненное хранилище
+    console.warn("не удалось сохранить лиды:", e);
+  }
+}
+
+// состояние страницы: читаем ОДИН раз при загрузке,
+// иначе после F5 список окажется пустым
+let leads = loadLeads();
+
+
+/* ============================================================
+   2. ЛОГИКА КНОПКИ (валидация и сохранение)
+   ============================================================ */
+
+const form = document.getElementById("leadForm");
+const statusBox = document.getElementById("status");
+
+/** Показывает ошибку под полем. */
+function showError(fieldId, errorId, message) {
+  document.getElementById(fieldId).classList.add("invalid");
+  document.getElementById(errorId).textContent = message;
+}
+
+/** Убирает ошибку с поля. */
+function clearError(fieldId) {
+  document.getElementById(fieldId).classList.remove("invalid");
+}
+
+/**
+ * Проверяет обязательные поля.
+ * Возвращает true, если всё заполнено.
+ */
+function validate(name, phone) {
+  let ok = true;
+
+  // trim обязателен: строка из одних пробелов не является заполненным полем
+  if (!name.trim()) {
+    showError("fieldName", "errName", "Укажите имя клиента");
+    ok = false;
+  }
+
+  const digits = phone.replace(/\D/g, "");
+  if (!phone.trim()) {
+    showError("fieldPhone", "errPhone", "Укажите телефон");
+    ok = false;
+  } else if (digits.length < 10) {
+    showError("fieldPhone", "errPhone", "В номере должно быть минимум 10 цифр");
+    ok = false;
+  }
+
+  return ok;
+}
+
+// обработчик кнопки «Сохранить»
+form.addEventListener("submit", function (event) {
+  event.preventDefault();          // иначе страница перезагрузится и данные из формы пропадут
+
+  const name = document.getElementById("name").value;
+  const phone = document.getElementById("phone").value;
+
+  // сначала снимаем прошлые ошибки, иначе они висят после исправления
+  clearError("fieldName");
+  clearError("fieldPhone");
+  statusBox.textContent = "";
+  statusBox.className = "status";
+
+  if (!validate(name, phone)) return;
+
+  const lead = {
+    id: Date.now(),
+    name: name.trim(),
+    phone: phone.trim(),
+    source: document.getElementById("source").value,
+    owner: document.getElementById("owner").value,
+    stage: document.getElementById("stage").value,
+    tz: document.getElementById("tz").checked,
+    createdAt: new Date().toISOString(),
+  };
+
+  leads.unshift(lead);   // новые сверху
+  saveLeads(leads);
+  render();
+
+  form.reset();
+  document.getElementById("name").focus();
+
+  sendToCrm(lead);       // дополнительное задание, см. ниже
+});
+
+// ошибка исчезает, как только человек начал исправлять поле
+document.getElementById("name").addEventListener("input", () => clearError("fieldName"));
+document.getElementById("phone").addEventListener("input", () => clearError("fieldPhone"));
+
+
+/* ============================================================
+   1. ИНТЕРФЕЙС (отрисовка списка лидов)
+   ============================================================ */
+
+const list = document.getElementById("list");
+const counter = document.getElementById("count");
+
+const STAGES = ["Новый лид", "Квалифицирован", "Назначена консультация", "Отказ"];
+
+/** Экранирует пользовательский ввод, чтобы разметка не ломалась. */
+function esc(value) {
+  return String(value).replace(/[&<>"']/g, function (ch) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+  });
+}
+
+function formatTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function render() {
+  counter.textContent = leads.length ? "· " + leads.length : "";
+
+  if (!leads.length) {
+    list.innerHTML = '<div class="empty">Пока ни одного лида. Заполните форму выше.</div>';
+    return;
+  }
+
+  list.innerHTML = leads.map(function (lead) {
+    const sourceClass = lead.source === "Холодный" ? "cold" : "warm";
+    const options = STAGES.map(function (s) {
+      return '<option value="' + esc(s) + '"' + (s === lead.stage ? " selected" : "") + ">" + esc(s) + "</option>";
+    }).join("");
+
+    return '' +
+      '<div class="lead">' +
+        '<div class="lead-head">' +
+          '<span class="lead-name">' + esc(lead.name) + '</span>' +
+          '<span class="lead-phone">' + esc(lead.phone) + '</span>' +
+          '<span class="lead-time">' + formatTime(lead.createdAt) + '</span>' +
+        '</div>' +
+        '<div class="badges">' +
+          '<span class="badge ' + sourceClass + '">' + esc(lead.source) + '</span>' +
+          '<span class="badge">' + esc(lead.owner) + '</span>' +
+          (lead.tz ? '<span class="badge tz">ТЗ запрошено</span>' : '') +
+        '</div>' +
+        '<div class="lead-actions">' +
+          '<select data-stage-for="' + lead.id + '">' + options + '</select>' +
+          '<button class="del" data-del="' + lead.id + '">Удалить</button>' +
+        '</div>' +
+      '</div>';
+  }).join("");
+}
+
+// смена этапа прямо в карточке (дополнительное задание)
+list.addEventListener("change", function (event) {
+  const select = event.target.closest("[data-stage-for]");
+  if (!select) return;
+
+  const id = Number(select.dataset.stageFor);
+  const lead = leads.find(function (l) { return l.id === id; });
+  if (!lead) return;
+
+  lead.stage = select.value;
+  saveLeads(leads);
+  render();
+});
+
+list.addEventListener("click", function (event) {
+  const btn = event.target.closest("[data-del]");
+  if (!btn) return;
+
+  const id = Number(btn.dataset.del);
+  leads = leads.filter(function (l) { return l.id !== id; });
+  saveLeads(leads);
+  render();
+});
+
+
+/* ============================================================
+   ДОПОЛНИТЕЛЬНОЕ ЗАДАНИЕ: отправка через API-запрос
+   ============================================================
+
+   Куда уходит запрос:
+   в реальной системе это был бы эндпоинт приёма лидов вашей CRM,
+   например POST https://crm.example.com/api/v1/leads с токеном
+   в заголовке Authorization.
+
+   Здесь вместо него стоит https://httpbin.org/post — публичный
+   сервис, который возвращает полученное тело обратно. Это позволяет
+   увидеть настоящий сетевой запрос во вкладке Network, не имея
+   доступа к боевой CRM.
+
+   Локальное сохранение уже произошло к моменту вызова, поэтому
+   отказ сети не приводит к потере лида: он остаётся в списке,
+   а пользователь видит предупреждение.
+*/
+
+const CRM_ENDPOINT = "https://httpbin.org/post";
+
+function sendToCrm(lead) {
+  statusBox.textContent = "Лид сохранён. Отправляю в CRM…";
+  statusBox.className = "status";
+
+  fetch(CRM_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      // "Authorization": "Bearer " + TOKEN,   // в боевой системе
+    },
+    body: JSON.stringify({
+      name: lead.name,
+      phone: lead.phone,
+      source: lead.source,
+      owner: lead.owner,
+      stage: lead.stage,
+      tz_requested: lead.tz,
+      created_at: lead.createdAt,
+    }),
+  })
+    .then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    })
+    .then(function () {
+      statusBox.textContent = "Лид сохранён и отправлен в CRM.";
+      statusBox.className = "status ok";
+    })
+    .catch(function (error) {
+      // важное поведение: лид уже лежит в localStorage,
+      // поэтому сбой отправки не теряет данные
+      console.warn("отправка в CRM не удалась:", error);
+      statusBox.textContent = "Лид сохранён локально, но отправить в CRM не удалось.";
+      statusBox.className = "status warn";
+    });
+}
+
+
+// первая отрисовка при загрузке страницы
+render();
+</script>
+</body>
+</html>
