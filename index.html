@@ -146,7 +146,7 @@
     </div>
 
     <button type="submit" class="save">Сохранить</button>
-    <div class="status" id="status"></div>
+    <div class="status" id="status" role="status" aria-live="polite"></div>
   </form>
 
   <h2>Лиды <span id="count" style="color:#9aa1ac;font-weight:400"></span></h2>
@@ -163,26 +163,51 @@
 
 const STORAGE_KEY = "crm.leads.v1";
 
-/** Читает лиды из localStorage. Битые данные не должны ломать страницу. */
+/**
+ * Читает лиды из localStorage. Битые данные не должны ломать страницу.
+ *
+ * Проверяется не только контейнер, но и каждый элемент. Array.isArray
+ * пропускает массив вида [null, 42, "текст"] — это валидный JSON, но
+ * обращение к полям такого элемента бросает TypeError. Если это случится
+ * на верхнем уровне скрипта, оборвётся всё, что ниже: обработчики не
+ * навесятся, и страница будет выглядеть целой, но перестанет реагировать
+ * на кнопку.
+ */
 function loadLeads() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
+
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.filter(function (lead) {
+      return lead
+        && typeof lead === "object"
+        && !Array.isArray(lead)
+        && Number.isFinite(Number(lead.id));
+    });
   } catch (e) {
     console.warn("не удалось прочитать сохранённые лиды:", e);
     return [];
   }
 }
 
-/** Записывает лиды в localStorage. */
+/**
+ * Записывает лиды в localStorage.
+ * Возвращает false, если запись не удалась.
+ *
+ * Возвращаемое значение важно: при переполнении квоты или в приватном
+ * режиме запись падает, и без проверки интерфейс покажет успех, а после
+ * перезагрузки лид исчезнет.
+ */
 function saveLeads(leads) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(leads));
+    return true;
   } catch (e) {
-    // приватный режим браузера или переполненное хранилище
     console.warn("не удалось сохранить лиды:", e);
+    return false;
   }
 }
 
@@ -282,11 +307,20 @@ form.addEventListener("submit", function (event) {
   };
 
   leads.unshift(lead);   // новые сверху
-  saveLeads(leads);
+  const written = saveLeads(leads);
   render();
 
   form.reset();
   document.getElementById("name").focus();
+
+  if (!written) {
+    // не выдаём успех за неудачу: лид виден в списке только потому,
+    // что лежит в памяти, и после перезагрузки исчезнет
+    statusBox.textContent = "Лид добавлен в список, но сохранить его не удалось: "
+      + "после перезагрузки страницы он пропадёт.";
+    statusBox.className = "status warn";
+    return;
+  }
 
   sendToCrm(lead);       // дополнительное задание, см. ниже
 });
@@ -317,6 +351,13 @@ function formatTime(iso) {
   return d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+/**
+ * Перерисовывает список лидов.
+ *
+ * У селекта и кнопки в каждой карточке проставляется aria-label с именем
+ * лида: без него скринридер объявит десять безымянных комбобоксов и
+ * десять неразличимых кнопок «Удалить».
+ */
 function render() {
   counter.textContent = leads.length ? "· " + leads.length : "";
 
@@ -344,8 +385,10 @@ function render() {
           (lead.tz ? '<span class="badge tz">ТЗ запрошено</span>' : '') +
         '</div>' +
         '<div class="lead-actions">' +
-          '<select data-stage-for="' + lead.id + '">' + options + '</select>' +
-          '<button class="del" data-del="' + lead.id + '">Удалить</button>' +
+          '<select data-stage-for="' + lead.id + '"' +
+                 ' aria-label="Этап сделки: ' + esc(lead.name) + '">' + options + '</select>' +
+          '<button class="del" data-del="' + lead.id + '"' +
+                 ' aria-label="Удалить лид ' + esc(lead.name) + '">Удалить</button>' +
         '</div>' +
       '</div>';
   }).join("");
@@ -362,7 +405,11 @@ list.addEventListener("change", function (event) {
 
   lead.stage = select.value;
   saveLeads(leads);
-  render();
+
+  // render() здесь намеренно не вызывается: этап нигде в карточке не
+  // показан, кроме самого селекта, и он уже отображает новое значение.
+  // Полная перерисовка удалила бы select во время обработки его же
+  // события и сбросила фокус на body.
 });
 
 list.addEventListener("click", function (event) {
@@ -370,9 +417,20 @@ list.addEventListener("click", function (event) {
   if (!btn) return;
 
   const id = Number(btn.dataset.del);
-  leads = leads.filter(function (l) { return l.id !== id; });
+  const position = [...list.querySelectorAll("[data-del]")].indexOf(btn);
+
+  leads = leads.filter(function (l) { return Number(l.id) !== id; });
   saveLeads(leads);
   render();
+
+  // после перерисовки фокус ушёл бы на body, и с клавиатуры пришлось бы
+  // таббиться заново от начала страницы
+  const buttons = list.querySelectorAll("[data-del]");
+  if (buttons.length) {
+    buttons[Math.min(position, buttons.length - 1)].focus();
+  } else {
+    document.getElementById("name").focus();
+  }
 });
 
 
@@ -397,7 +455,15 @@ list.addEventListener("click", function (event) {
 
 const CRM_ENDPOINT = "https://httpbin.org/post";
 
+// Номер последней отправки. Ответы приходят не в том порядке, в каком
+// уходили запросы, поэтому запоздавший ответ от предыдущего лида не
+// должен переписывать статус текущего.
+let sendTicket = 0;
+
 function sendToCrm(lead) {
+  const ticket = ++sendTicket;
+  const isCurrent = function () { return ticket === sendTicket; };
+
   statusBox.textContent = "Лид сохранён. Отправляю в CRM…";
   statusBox.className = "status";
 
@@ -422,6 +488,7 @@ function sendToCrm(lead) {
       return response.json();
     })
     .then(function () {
+      if (!isCurrent()) return;   // пришёл ответ на устаревший запрос
       statusBox.textContent = "Лид сохранён и отправлен в CRM.";
       statusBox.className = "status ok";
     })
@@ -429,10 +496,26 @@ function sendToCrm(lead) {
       // важное поведение: лид уже лежит в localStorage,
       // поэтому сбой отправки не теряет данные
       console.warn("отправка в CRM не удалась:", error);
+      if (!isCurrent()) return;
       statusBox.textContent = "Лид сохранён локально, но отправить в CRM не удалось.";
       statusBox.className = "status warn";
     });
 }
+
+/*
+   Синхронизация между вкладками.
+
+   Страница работает со снимком массива в памяти, а saveLeads переписывает
+   хранилище целиком. Без этого обработчика две открытые вкладки затирали
+   бы лиды друг друга: та, что сохранит последней, не знает про чужие
+   записи. Событие storage приходит только в другие вкладки, не в ту,
+   что писала.
+*/
+window.addEventListener("storage", function (event) {
+  if (event.key !== STORAGE_KEY) return;
+  leads = loadLeads();
+  render();
+});
 
 
 // первая отрисовка при загрузке страницы
